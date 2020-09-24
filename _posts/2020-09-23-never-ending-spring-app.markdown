@@ -474,5 +474,63 @@ So, now, if I add that same call into the end of my 'run' method, it also finish
 
 So, the mystery is not resolved, but at least now it seems I can put the finger squarely on RDF4J and call it a day..
 
+--end of episode 3 (2020-09-24 20:19 EEST)--
+
+But, hold on a second. That's actually all makes for a totally valid story!! it's not an "issue", it's how it *supposed*
+ to be! So, JVM will not be shutdown by a "Destroy JavaVM" thread, unless there's at least one *non-daemon* thread staying
+ around! And that's exactly the thread we've created by instantiating a thread pool via `Executors.newSingleThreadScheduledExecutor()`.
+ 
+So, as long as it finished the original task, it keeps waiting for a second one. And that precludes JVM from completing 
+ when the `main` method has finished execution. 
+ 
+Let's see if there're any ways to finish the threadpool without calling `System.exit()` . So let's refactor our app to 
+inject `ExecutorService` instead of creating it on the fly in the `QueryExecutor` (which, to be honest, I should've done 
+in the very beginning). 
+
+Ok, after refactoring quite a bit of internal `QueryExecutor` machinary, into Spring-beans, I can re-write the `run` 
+method as follows:
+
+```java
+@SpringBootApplication
+public class DemoApplication implements CommandLineRunner {
+
+	@Autowired
+	QueryExecutor queryExecutor;
+
+	@Autowired
+	ScheduledExecutorService executorService;
+
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+
+	@Override
+	public void run(String... args) throws Exception {
+		System.out.println("Starting application");
+		try (TupleQueryResult result = queryExecutor.executeQuery("SELECT ?lexeme ?lemma WHERE {\n" +
+						"  ?lexeme dct:language wd:Q9072;wikibase:lexicalCategory wd:Q1084;wikibase:lemma ?lemma.\n" +
+						"  FILTER (STR(?lemma)=\"aprill\")\n" +
+						"}")) {
+			while (result.hasNext()) {
+				result.next();
+			}
+		}
+		System.out.println("Exiting application");
+		executorService.shutdown();
+	}
+}
+```
+Aaaaaand ... now it works as you would expect! 
+
+Phew! That's quite satisfying, tbh! So, what have I learned? 
+
+- some bits about Java threads and thread pools;
+- something about JVM shutdown behaviour;
+- something about `jps` and `jstack` tools. 
+
+Awesome, I would say! 
+
+Ok, cheers, everyone! 
+
 [thread-dump]: https://dzone.com/articles/how-analyze-java-thread-dumps
 [destroy-java-vm]: https://stackoverflow.com/a/34433567/2583044
