@@ -80,7 +80,7 @@ API, and that would be non-practical via GUI (although, feasible, I guess, with 
 
 Ok, so my first problem to address would be to learn to use those Delphi 2 DLLs from some CLI app. I have been curious
 about [Rust](https://www.rust-lang.org/) for quite some time already, so I thought - why not? Sounds like a perfect match.
-And.. after quite [some trial and error](https://github.com/62mkv/rust-est)... it worked! Now I could do stuff like 
+And... after quite [some trial and error](https://github.com/62mkv/rust-est)... it worked! Now I could do stuff like 
 this:  
 
 ```
