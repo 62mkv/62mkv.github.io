@@ -2,6 +2,7 @@
 layout: post
 title:  "Long Road To Lexeme"
 date: 2021-02-01 22:09
+comments: true
 categories: wikidata linguistics
 ---
 
