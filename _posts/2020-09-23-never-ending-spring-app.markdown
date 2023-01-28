@@ -1,11 +1,9 @@
 ---
 layout: post
-title:  "The strange case of never-ending Spring application"
+title:  "The strange case of never-ending Java application"
 date: 2020-09-18 20:46
 categories: it java spring
 ---
-
-# The strange case of never-ending Spring-based Java app
 
 In this post I will try to keep a record of my attempts to approach and resolve a 
 not-too-obvious problem: problem of a Java application, that seems to not be able to finish execution.
@@ -386,9 +384,95 @@ and then we're hanging again..
 
 *AAAAAAAAARGHHHHHHHHHHHHHH. Fork it, I'm leaving (for now)*
 
-
 --end of episode 2 (2020-09-21 21:00 EEST)--
  
+ Ok, where could we go from here? 
+
+Obvious step would be to start actually consuming the `ResultSet`, so let's do this: 
+
+```java
+			while (result.hasNext()) {
+				result.next();
+			}
+```
+
+Run, and ... it did not change anything.. Ok, one thing less to try.
+
+Ok, so, if I run the app in IDE debugger, and click "Pause execution", when the app is hanging on exit, invariably it's
+"pool-1-thread-1" thread, with the same stacktrace as presented above. So, it seems like it's hanging (awaiting) on 
+"available" condition in the `java.util.concurrent.ScheduledThreadPoolExecutor.DelayedWorkQueue::take` method.
+
+Seems like some weird thread pooling issue. Maybe I could find some other executor? Hmm... Let's see. `RDF4JProtocolSession`
+only has one constructor, and it expects a `ScheduledExecutorService` instance. And it seems like there're not too many 
+ways to instantiate one... I've tried with `Executors.newSingleThreadScheduledExecutor()` as well, but it did not change 
+anything, obviously. 
+
+What if we set field watchpoint on `java.util.concurrent.ScheduledThreadPoolExecutor.DelayedWorkQueue.available` field? 
+Let's try it out. I've checked "Log Breakpoint hit message", "Log Stacktrace" and set "Evaluate and log" field to "leader" 
+
+Here's the output: 
+
+```
+Connected to the target VM, address: '127.0.0.1:54378', transport: 'socket'
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::        (v2.3.4.RELEASE)
+
+2020-09-23 20:57:44.706  INFO 16064 --- [           main] com.example.demo.DemoApplication         : Starting DemoApplication on DESKTOP-TSSQSTI with PID 16064 (C:\Develop\Java\spring-rdf4j\out\production\classes started by kiril in C:\Develop\Java\spring-rdf4j)
+2020-09-23 20:57:44.711  INFO 16064 --- [           main] com.example.demo.DemoApplication         : No active profile set, falling back to default profiles: default
+2020-09-23 20:57:46.986  INFO 16064 --- [           main] com.example.demo.DemoApplication         : Started DemoApplication in 2.813 seconds (JVM running for 3.533)
+Starting application
+{java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue@3,921}.available will be accessed at java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.offer(ScheduledThreadPoolExecutor.java:1024)
+Breakpoint reached
+	at java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.offer(ScheduledThreadPoolExecutor.java:1024)
+	at java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.add(ScheduledThreadPoolExecutor.java:1037)
+	at java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.add(ScheduledThreadPoolExecutor.java:809)
+	at java.util.concurrent.ScheduledThreadPoolExecutor.delayedExecute(ScheduledThreadPoolExecutor.java:328)
+	at java.util.concurrent.ScheduledThreadPoolExecutor.schedule(ScheduledThreadPoolExecutor.java:533)
+	at java.util.concurrent.ScheduledThreadPoolExecutor.execute(ScheduledThreadPoolExecutor.java:622)
+	at java.util.concurrent.Executors$DelegatedExecutorService.execute(Executors.java:668)
+	at org.eclipse.rdf4j.http.client.BackgroundResultExecutor.autoCloseRunnable(BackgroundResultExecutor.java:63)
+	at org.eclipse.rdf4j.http.client.BackgroundResultExecutor.parse(BackgroundResultExecutor.java:33)
+	at org.eclipse.rdf4j.http.client.SPARQLProtocolSession.getBackgroundTupleQueryResult(SPARQLProtocolSession.java:669)
+	at org.eclipse.rdf4j.http.client.SPARQLProtocolSession.sendTupleQuery(SPARQLProtocolSession.java:373)
+	at com.example.demo.wikidata.QueryExecutor.executeQuery(QueryExecutor.java:40)
+	at com.example.demo.DemoApplication.run(DemoApplication.java:23)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:795)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:779)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:322)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1237)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1226)
+	at com.example.demo.DemoApplication.main(DemoApplication.java:17)
+null
+Exiting application
+{java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue@3,921}.available will be accessed at java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1081)
+Breakpoint reached
+	at java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1081)
+	at java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+	at java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1074)
+	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1134)
+	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+	at java.lang.Thread.run(Thread.java:748)
+null
+``` 
+
+So, sounds pretty legit? the task is offered once and taken once? but, which threads were _executing_ 
+those operations? Checking "Suspend" box on the watchpoint and running again shows, that the first (`offer`) operation 
+is run in the `main` thread, while `take` operation is run in the `pool-1-thread-1` thread, i.e. the one which is 
+(supposedly) created by our single-threaded thread pool.     
+
+At this point I decided to try and run this code in the "Spring-less" application, i.e. the one which only uses RDF4j 
+without Spring at all. And you know what? It behaves exactly like this one!! Except, with that application, I managed to 
+put `System.exit(0)` at the end of the `main` method. And then forgot about it completely.. FFS...
+
+So, now, if I add that same call into the end of my 'run' method, it also finishes alright. 
+
+So, the mystery is not resolved, but at least now it seems I can put the finger squarely on RDF4J and call it a day..
 
 [thread-dump]: https://dzone.com/articles/how-analyze-java-thread-dumps
 [destroy-java-vm]: https://stackoverflow.com/a/34433567/2583044
