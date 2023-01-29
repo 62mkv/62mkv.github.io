@@ -3,7 +3,7 @@ layout: post
 title:  "Long Road To Lexeme"
 date: 2021-02-01 22:09
 comments: true
-categories: wikidata linguistics
+categories: wikidata linguistics estonian
 ---
 
 Long, long ago, in a galaxy far, far away.. Nah, I am just kidding. Not too far away, 

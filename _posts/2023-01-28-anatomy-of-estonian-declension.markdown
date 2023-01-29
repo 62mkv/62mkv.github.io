@@ -3,7 +3,7 @@ layout: post
 title:  "Anatomy of Estonian declension, part I"
 date: 2023-01-28 18:48
 comments: true
-categories: wikidata linguistics
+categories: estonian linguistics
 ---
 
 What is "declension"? As [per Wikipedia](https://en.wikipedia.org/wiki/Declension): 
